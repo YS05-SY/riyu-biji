@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 // Define the structure for a card
 interface KanaCard {
-  id: string; // Unique ID for the card
+  id: string; // Unique ID for the card 123
   value: string; // The kana character (hiragana or katakana)
   pairValue: string; // The corresponding kana character in the other script
   isFlipped: boolean;
