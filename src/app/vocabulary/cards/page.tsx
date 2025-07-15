@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { vocabularyData, VocabularyCard, vocabularyCategories } from '@/data/vocabulary';
+import { vocabularyData, VocabularyCard, vocabularyCategories } from '../../../data/vocabulary';
 
 // 添加数据连接验证
 console.log('=== Data Connection Verification ===');
@@ -164,7 +164,7 @@ const VocabularyCardsPage = () => {
         <div className="mb-8">
           <h2 className="text-xl font-bold mb-4">选择类型</h2>
           <div className="flex flex-wrap gap-2 mb-4">
-            {vocabularyCategories.map(category => (
+            {vocabularyCategories.map((category: { id: string; name: string }) => (
               <button
                 key={category.id}
                 onClick={() => handleCategoryChange(category.id)}
@@ -305,7 +305,7 @@ const VocabularyCardsPage = () => {
               <div className="mb-4">
                 <h3 className="font-semibold mb-1">例句：</h3>
                 <ul className="list-disc pl-5 space-y-1">
-                  {selectedCard.examples.map((ex, idx) => (
+                  {selectedCard.examples.map((ex: { japanese: string; chinese: string }, idx: number) => (
                     <li key={idx}>
                       <span className="text-gray-800">{ex.japanese}</span>
                       <span className="text-gray-500 ml-2">{ex.chinese}</span>
