@@ -1,5 +1,5 @@
 'use client';
-#123
+
 import React, { useState, useEffect, useRef } from 'react';
 
 // Define the structure for a card
