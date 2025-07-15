@@ -1,4 +1,2 @@
-# 忽略大文件和依赖目录
-.next/
-data/
+.next/data/
 node_modules/
