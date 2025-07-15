@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Japanese Kana Recognition Model Trainer</title>
+  <!-- 引入 TensorFlow.js 库 -->
+  <script src="/js/tensorflow.min.js"></script>
+</head>
+<body>
+  <h1>日语假名识别模型训练器</h1>
+  <p>打开开发者工具（F12），查看 Console 面板，训练过程会显示在那里。</p>
+
+  <script>
+    // 常量定义
+    const IMAGE_SIZE = 28;
+    const NUM_CLASSES = 71; // 平假名数量
+    const NUM_TRAIN_IMAGES = 10000; // 每个字符的训练样本数
+    const NUM_TEST_IMAGES = 2000; // 每个字符的测试样本数
+
+    // 平假名字符集
+    const HIRAGANA_CHARS = [
+      'あ', 'い', 'う', 'え', 'お',
+      'か', 'き', 'く', 'け', 'こ',
+      'さ', 'し', 'す', 'せ', 'そ',
+      'た', 'ち', 'つ', 'て', 'と',
+      'な', 'に', 'ぬ', 'ね', 'の',
+      'は', 'ひ', 'ふ', 'へ', 'ほ',
+      'ま', 'み', 'む', 'め', 'も',
+      'や', 'ゆ', 'よ',
+      'ら', 'り', 'る', 'れ', 'ろ',
+      'わ', 'を', 'ん',
+      'が', 'ぎ', 'ぐ', 'げ', 'ご',
+      'ざ', 'じ', 'ず', 'ぜ', 'ぞ',
+      'だ', 'ぢ', 'づ', 'で', 'ど',
+      'ば', 'び', 'ぶ', 'べ', 'ぼ',
+      'ぱ', 'ぴ', 'ぷ', 'ぺ', 'ぽ',
+      'ゃ', 'ゅ', 'ょ', 'っ'
+    ];
+
+    // 1. 加载 ETL 数据集
+    async function loadETLData() {
+      const baseUrl = '/data/etl/';
+      
+      console.log('Loading preprocessed ETL data...');
+
+      // 加载预处理后的图像和标签数据
+      const imagesResponse = await fetch(`${baseUrl}images.bin`);
+      const labelsResponse = await fetch(`${baseUrl}labels.bin`);
+
+      if (!imagesResponse.ok || !labelsResponse.ok) {
+        throw new Error('Failed to load preprocessed ETL data. Make sure scripts/preprocess_etl9.py has been run.');
+      }
+
+      const imagesBuffer = await imagesResponse.arrayBuffer();
+      const labelsBuffer = await labelsResponse.arrayBuffer();
+
+      // 从 ArrayBuffer 加载原始二进制数据
+      // TensorFlow.js 期望 images 是 [样本数, 28, 28, 1] 形状的 Tensor
+      // labels 是 [样本数] 形状的 Tensor
+
+      const numSamples = imagesBuffer.byteLength / (IMAGE_SIZE * IMAGE_SIZE * 4); // 4 bytes per float (Float32Array)
+      if (numSamples % 1 !== 0) {
+        console.error('Invalid images.bin data length. Not evenly divisible by image size and float32 byte size.');
+        throw new Error('Invalid images.bin data length.');
+      }
+      const trainX = tf.tensor4d(new Float32Array(imagesBuffer), [numSamples, IMAGE_SIZE, IMAGE_SIZE, 1]);
+      const trainY = tf.oneHot(tf.tensor1d(new Int32Array(labelsBuffer), 'int32'), NUM_CLASSES);
+
+      // 假设我们不区分训练集和测试集，全部用于训练。如果需要分开，Python脚本需要输出两个文件集。
+      const testX = trainX; // 简化处理，实际应用中应有单独的测试集
+      const testY = trainY; // 简化处理，实际应用中应有单独的测试集
+
+      return { trainX, trainY, testX, testY };
+    }
+
+    // 辅助函数：加载图像数据 - 不再需要
+    /*
+    async function loadImages(url) {
+      const buffer = await fetch(url).then(res => res.arrayBuffer());
+      const data = new Uint8Array(buffer);
+      return Array.from(data.slice(16)).map(val => val / 255.0);
+    }
+    */
+
+    // 辅助函数：加载标签数据 - 不再需要
+    /*
+    async function loadLabels(url) {
+      const buffer = await fetch(url).then(res => res.arrayBuffer());
+      const data = new Uint8Array(buffer);
+      return Array.from(data.slice(8));
+    }
+    */
+
+    // Node.js环境加载数据 - 在浏览器训练器中不需要，移除这部分
+    /*
+    async function loadDataFromNode() {
+      // ... Node.js加载逻辑 ...
+    }
+    */
+
+    // 2. 创建卷积神经网络模型
+    function createModel() {
+      const model = tf.sequential();
+
+      // 第一层卷积
+      model.add(tf.layers.conv2d({
+        inputShape: [IMAGE_SIZE, IMAGE_SIZE, 1],
+        filters: 32,
+        kernelSize: 3,
+        activation: 'relu',
+        padding: 'same'
+      }));
+
+      // 第二层卷积
+      model.add(tf.layers.conv2d({
+        filters: 64,
+        kernelSize: 3,
+        activation: 'relu',
+        padding: 'same'
+      }));
+
+      // 池化层
+      model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+
+      // Dropout层防止过拟合
+      model.add(tf.layers.dropout({ rate: 0.25 }));
+
+      // 第三层卷积
+      model.add(tf.layers.conv2d({
+        filters: 128,
+        kernelSize: 3,
+        activation: 'relu',
+        padding: 'same'
+      }));
+
+      // 池化层
+      model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+
+      // Dropout层
+      model.add(tf.layers.dropout({ rate: 0.25 }));
+
+      // 全连接层
+      model.add(tf.layers.flatten());
+      model.add(tf.layers.dense({ units: 512, activation: 'relu' }));
+      model.add(tf.layers.dropout({ rate: 0.5 }));
+      model.add(tf.layers.dense({ units: NUM_CLASSES, activation: 'softmax' }));
+
+      // 编译模型
+      model.compile({
+        optimizer: tf.train.adam(0.001),
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
+      });
+
+      return model;
+    }
+
+    // 3. 训练模型
+    async function trainModel(epochs = 30, batchSize = 32) {
+      console.log('Loading ETL dataset...');
+      const data = await loadETLData();
+
+      console.log('Creating model...');
+      const model = createModel();
+      model.summary();
+
+      console.log(`Training model for ${epochs} epochs...`);
+      const history = await model.fit(
+        data.trainX,
+        data.trainY,
+        {
+          epochs: epochs,
+          batchSize: batchSize,
+          validationData: [data.testX, data.testY],
+          callbacks: {
+            onEpochEnd: (epoch, logs) => {
+              console.log(`Epoch ${epoch + 1}/${epochs}:`);
+              console.log(`  Train accuracy: ${(logs?.acc || 0).toFixed(4)}`);
+              console.log(`  Validation accuracy: ${(logs?.val_acc || 0).toFixed(4)}`);
+            }
+          }
+        }
+      );
+
+      // 评估模型
+      const evalResult = await model.evaluate(data.testX, data.testY);
+      if (Array.isArray(evalResult)) {
+        console.log(`Test accuracy: ${evalResult[1].dataSync()[0].toFixed(4)}`);
+      } else {
+        console.log(`Test loss: ${evalResult.dataSync()[0].toFixed(4)}`);
+      }
+
+      // 释放Tensor内存
+      data.trainX.dispose(); data.trainY.dispose(); data.testX.dispose(); data.testY.dispose();
+
+      return { model, history };
+    }
+
+    // 4. 保存和加载模型
+    async function saveModel(model, modelName = 'japanese-kana') {
+      // 保存到 IndexedDB
+      const saveResult = await model.save(`indexeddb://${modelName}`);
+      console.log('Model saved to IndexedDB:', saveResult);
+
+      // 导出模型文件
+      try {
+        // 导出为 JSON 格式
+        const modelJSON = await model.toJSON();
+        const modelJSONStr = JSON.stringify(modelJSON);
+        
+        // 创建下载链接
+        const blob = new Blob([modelJSONStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${modelName}-model.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        // 导出权重
+        // 注意：weights.map(w => w.data()) 返回的是 Promise<TypedArray>
+        // 需要将 TypedArray 转换为普通的数组，因为 JSON.stringify 不直接支持 TypedArray
+        const weights = await model.getWeights();
+        const weightData = await Promise.all(weights.map(async w => Array.from(await w.data())));
+        
+        const weightBlob = new Blob([JSON.stringify(weightData)], { type: 'application/json' });
+        const weightUrl = URL.createObjectURL(weightBlob);
+        const weightA = document.createElement('a');
+        weightA.href = weightUrl;
+        weightA.download = `${modelName}-weights.json`;
+        document.body.appendChild(weightA);
+        weightA.click();
+        document.body.removeChild(weightA);
+        URL.revokeObjectURL(weightUrl);
+
+        console.log('Model files exported successfully');
+      } catch (error) {
+        console.error('Error exporting model:', error);
+      }
+
+      return saveResult;
+    }
+
+    // 从 IndexedDB 加载模型
+    async function loadModel(modelName = 'japanese-kana') {
+      try {
+        const model = await tf.loadLayersModel(`indexeddb://${modelName}`);
+        console.log('Model loaded successfully from IndexedDB');
+        return model;
+      } catch (error) {
+        console.error('Failed to load model from IndexedDB:', error);
+        return null;
+      }
+    }
+
+    // 添加模型加载函数 (从文件)
+    async function loadModelFromFiles(modelJSON, weightsJSON) {
+      try {
+        // 加载模型结构
+        const model = await tf.loadLayersModel(tf.io.fromMemory(modelJSON));
+        
+        // 加载权重
+        const weights = JSON.parse(weightsJSON);
+        model.setWeights(weights.map(w => tf.tensor(w)));
+        
+        console.log('Model loaded from files successfully');
+        return model;
+      } catch (error) {
+        console.error('Error loading model from files:', error);
+        return null;
+      }
+    }
+
+    // 5. 预测函数
+    async function predict(model, imageData) {
+      // 假设imageData是一个28x28的灰度图像数组 (28 * 28 = 784)
+      const imageTensor = tf.tensor4d(imageData, [1, IMAGE_SIZE, IMAGE_SIZE, 1]);
+
+      // 预测
+      const predictions = model.predict(imageTensor);
+      const predictedClass = predictions.argMax(1).dataSync()[0];
+
+      // 释放Tensor内存
+      imageTensor.dispose(); predictions.dispose();
+
+      return predictedClass;
+    }
+
+    // 主函数
+    async function main() {
+      console.log("Trainer script started.");
+      const existingModel = await loadModel();
+      if (existingModel) {
+        console.log('Existing model found. Trainer page completed.');
+        existingModel.dispose();
+      } else {
+        console.log('No existing model found. Training new model...');
+        const { model } = await trainModel(30);
+        await saveModel(model);
+        console.log('Training and saving process finished!');
+        model.dispose();
+      }
+    }
+
+    // 如果在浏览器中运行
+    if (typeof window !== 'undefined') {
+      window.addEventListener('load', main);
+    }
+
+    // 导出函数供其他模块使用 - 在这个单文件HTML里不需要导出，移除这部分
+    /* export { ... }; */
+
+  </script>
+</body>
+</html> 

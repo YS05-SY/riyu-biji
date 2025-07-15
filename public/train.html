@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>日语假名识别模型训练器</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            text-align: center;
+        }
+        #status {
+            margin: 20px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .loading {
+            background-color: #f0f0f0;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>日语假名识别模型训练器</h1>
+        <div id="status">准备就绪</div>
+        <button id="startTraining" onclick="startTraining()" disabled>开始训练</button>
+    </div>
+
+    <script>
+        const statusDiv = document.getElementById('status');
+        const startButton = document.getElementById('startTraining');
+
+        function updateStatus(message, type = '') {
+            statusDiv.textContent = message;
+            statusDiv.className = type;
+        }
+
+        async function init() {
+            updateStatus('正在加载 TensorFlow.js...', 'loading');
+            try {
+                await tf.ready();
+                updateStatus('TensorFlow.js 加载完成，点击"开始训练"按钮', 'success');
+                startButton.disabled = false;
+            } catch (error) {
+                updateStatus('TensorFlow.js 加载失败: ' + error.message, 'error');
+                console.error('TensorFlow.js 加载失败:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+
+        async function startTraining() {
+            startButton.disabled = true;
+            updateStatus('正在加载数据...', 'loading');
+
+            try {
+                // 加载预处理后的数据
+                const imagesResponse = await fetch('/data/etl/images.bin');
+                const labelsResponse = await fetch('/data/etl/labels.bin');
+
+                if (!imagesResponse.ok || !labelsResponse.ok) {
+                    throw new Error('无法加载数据文件');
+                }
+
+                const imagesBuffer = await imagesResponse.arrayBuffer();
+                const labelsBuffer = await labelsResponse.arrayBuffer();
+
+                // 转换为TensorFlow张量
+                // 13200 是样本数量，28x28 是图像尺寸，1 是通道数 (灰度图像)
+                // images.bin 存储的是 Float32Array，每个浮点数占用 4 字节
+                const images = tf.tensor4d(new Float32Array(imagesBuffer), [13200, 28, 28, 1]);
+                // labels.bin 存储的是 Int32Array，每个整数占用 4 字节
+                const labels = tf.oneHot(tf.tensor1d(new Int32Array(labelsBuffer), 'int32'), 71);
+
+                updateStatus('正在创建模型...', 'loading');
+
+                // 创建模型
+                const model = tf.sequential();
+                
+                // 第一个卷积层
+                model.add(tf.layers.conv2d({
+                    inputShape: [28, 28, 1],
+                    filters: 32,
+                    kernelSize: 3,
+                    activation: 'relu',
+                    padding: 'same'
+                }));
+
+                // 第二个卷积层
+                model.add(tf.layers.conv2d({
+                    filters: 64,
+                    kernelSize: 3,
+                    activation: 'relu',
+                    padding: 'same'
+                }));
+
+                // 池化层
+                model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+                model.add(tf.layers.dropout({ rate: 0.25 }));
+
+                // 第三个卷积层
+                model.add(tf.layers.conv2d({
+                    filters: 128,
+                    kernelSize: 3,
+                    activation: 'relu',
+                    padding: 'same'
+                }));
+
+                // 池化层
+                model.add(tf.layers.maxPooling2d({ poolSize: [2, 2] }));
+                model.add(tf.layers.dropout({ rate: 0.25 }));
+
+                // 全连接层
+                model.add(tf.layers.flatten());
+                model.add(tf.layers.dense({ units: 512, activation: 'relu' }));
+                model.add(tf.layers.dropout({ rate: 0.5 }));
+                model.add(tf.layers.dense({ units: 71, activation: 'softmax' }));
+
+                // 编译模型
+                model.compile({
+                    optimizer: tf.train.adam(0.001),
+                    loss: 'categoricalCrossentropy',
+                    metrics: ['accuracy']
+                });
+
+                updateStatus('开始训练模型...', 'loading');
+
+                // 训练模型
+                const history = await model.fit(images, labels, {
+                    epochs: 30,
+                    batchSize: 32,
+                    validationSplit: 0.2,
+                    callbacks: {
+                        onEpochEnd: (epoch, logs) => {
+                            updateStatus(
+                                `训练进度: ${epoch + 1}/30\n` +
+                                `准确率: ${(logs.acc * 100).toFixed(2)}%\n` +
+                                `验证准确率: ${(logs.val_acc * 100).toFixed(2)}%`,
+                                'loading'
+                            );
+                        }
+                    }
+                });
+
+                // 保存模型
+                updateStatus('正在保存模型...', 'loading');
+                await model.save('indexeddb://japanese-kana');
+
+                // 导出模型文件
+                const modelJSON = await model.toJSON();
+                const modelJSONStr = JSON.stringify(modelJSON, null, 2);
+                
+                // 创建下载链接
+                (function () { var a = document.createElement("a"); var blob = new Blob([JSON.stringify(model.toJSON(), null, 2)], { type: "application/json" }); a.href = URL.createObjectURL(blob); a.download = "japanese-kana-model.json"; a.click(); })();
+
+                // 导出权重
+                const weights = await model.getWeights();
+                const weightData = await Promise.all(weights.map(async w => Array.from(await w.data())));
+                
+                const weightBlob = new Blob([JSON.stringify(weightData)], { type: 'application/json' });
+                const weightUrl = URL.createObjectURL(weightBlob);
+                const weightA = document.createElement('a');
+                weightA.href = weightUrl;
+                weightA.download = 'japanese-kana-weights.json';
+                document.body.appendChild(weightA);
+                weightA.click();
+                document.body.removeChild(weightA);
+                URL.revokeObjectURL(weightUrl);
+
+                updateStatus('训练完成！模型已保存。', 'success');
+            } catch (error) {
+                console.error('训练出错:', error);
+                updateStatus('训练失败: ' + error.message, 'error');
+            } finally {
+                startButton.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html> 

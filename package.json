@@ -1,0 +1,34 @@
+{
+  "name": "japanese-learning-platform",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-layers": "^4.22.0",
+    "@types/react-beautiful-dnd": "^13.1.8",
+    "autoprefixer": "^10.4.19",
+    "chart.js": "^4.4.9",
+    "next": "^14.2.2",
+    "openai": "^5.0.1",
+    "postcss": "^8.4.38",
+    "react": "^18",
+    "react-beautiful-dnd": "^13.1.1",
+    "react-chartjs-2": "^5.3.0",
+    "react-dom": "^18",
+    "tailwindcss": "^3.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.2",
+    "typescript": "^5"
+  }
+}
