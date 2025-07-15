@@ -167,34 +167,33 @@ export default function MemoryChallengePage() {
             )
           );
           setSelectedCards([]); // Clear selected cards
-
-          // Check for round completion (all pairs matched)
-          if (matchedPairs + 1 === cardCounts[currentRound - 1] / 2) {
-              if (currentRound < cardCounts.length) {
-                   setGamePhase('roundComplete');
-                   // Delay before starting next round - initializeRound will be called by the useEffect observing gamePhase change
-                   setTimeout(() => {
-                       setGamePhase('showing'); // Transition to showing phase to trigger next round init
-                   }, 2000); // Delay before starting next round
-
-              } else {
-                   setGamePhase('gameComplete');
-              }
-          }
-
         } else {
           // No match - Game Over!
           setGamePhase('gameOver');
           setSelectedCards([]); // Clear selected cards on game over
         }
       }, 500); // 500ms delay for match check
-       return () => clearTimeout(matchCheckTimer); // Cleanup timer
+      return () => clearTimeout(matchCheckTimer); // Cleanup timer
     }
     // Clear selected cards immediately if game phase changes while 2 are selected and they weren't processed by the timeout yet
     if (selectedCards.length === 2 && gamePhase !== 'playing') {
-         setSelectedCards([]);
+      setSelectedCards([]);
     }
-  }, [selectedCards, cards, matchedPairs, currentRound, gamePhase]); // Added gamePhase to dependencies
+  }, [selectedCards, cards, gamePhase]); // 只依赖 selectedCards, cards, gamePhase
+
+  // 新增：监听 matchedPairs，判断是否过关
+  useEffect(() => {
+    if (gamePhase === 'playing') {
+      const pairsToMatch = cardCounts[currentRound - 1] / 2;
+      if (matchedPairs === pairsToMatch) {
+        if (currentRound < cardCounts.length) {
+          setGamePhase('roundComplete');
+        } else {
+          setGamePhase('gameComplete');
+        }
+      }
+    }
+  }, [matchedPairs, gamePhase, currentRound]);
 
   // Effect: 自动进入下一回合，无需按钮
   useEffect(() => {
